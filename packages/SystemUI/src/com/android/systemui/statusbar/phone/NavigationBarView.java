@@ -255,6 +255,10 @@ public class NavigationBarView extends LinearLayout {
         return mCurrentView.findViewById(R.id.ime_switcher);
     }
 
+    public View getSuperButton() {
+        return mCurrentView.findViewById(R.id.super_button);
+    }
+
     private void getIcons(Resources res) {
         mBackIcon = res.getDrawable(R.drawable.ic_sysbar_back);
         mBackLandIcon = mBackIcon;

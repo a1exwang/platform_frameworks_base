@@ -28,6 +28,7 @@ import android.app.PendingIntent;
 import android.app.StatusBarManager;
 import android.content.BroadcastReceiver;
 import android.content.ComponentCallbacks2;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
@@ -67,6 +68,7 @@ import android.os.SystemClock;
 import android.os.UserHandle;
 import android.os.UserManager;
 import android.os.Vibrator;
+import android.provider.AlarmClock;
 import android.provider.Settings;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.NotificationListenerService.RankingMap;
@@ -94,6 +96,7 @@ import android.view.animation.LinearInterpolator;
 import android.view.animation.PathInterpolator;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.android.internal.logging.MetricsLogger;
 import com.android.internal.statusbar.NotificationVisibility;
@@ -1129,6 +1132,15 @@ public class PhoneStatusBar extends BaseStatusBar implements DemoMode,
         mNavigationBarView.getBackButton().setOnLongClickListener(mLongPressBackRecentsListener);
         mNavigationBarView.getHomeButton().setOnTouchListener(mHomeActionListener);
         mNavigationBarView.getHomeButton().setOnLongClickListener(mLongPressHomeListener);
+        mNavigationBarView.getSuperButton().setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Toast.makeText(mContext, "super button", Toast.LENGTH_SHORT).show();
+                Intent intent = new Intent(AlarmClock.ACTION_SET_ALARM);
+                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                mContext.startActivity(intent);
+            }
+        });
         mAssistManager.onConfigurationChanged();
     }
 

@@ -26,6 +26,7 @@ import android.os.Handler;
 import android.os.SystemClock;
 import android.text.TextUtils;
 import android.util.ArraySet;
+import android.util.Log;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.animation.AnimationUtils;
@@ -45,8 +46,14 @@ import com.android.systemui.statusbar.StatusBarIconView;
 import com.android.systemui.tuner.TunerService;
 import com.android.systemui.tuner.TunerService.Tunable;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
+import java.util.Scanner;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Controls everything regarding the icons in the status bar and on Keyguard, including, but not
@@ -75,6 +82,7 @@ public class StatusBarIconController implements Tunable {
     private ImageView mMoreIcon;
     private BatteryMeterView mBatteryMeterView;
     private TextView mClock;
+    private TextView mNetworkSpeedStatus;
 
     private int mIconSize;
     private int mIconHPadding;
@@ -111,6 +119,8 @@ public class StatusBarIconController implements Tunable {
         mNotificationColorUtil = NotificationColorUtil.getInstance(context);
         mSystemIconArea = (LinearLayout) statusBar.findViewById(R.id.system_icon_area);
         mStatusIcons = (LinearLayout) statusBar.findViewById(R.id.statusIcons);
+        mNetworkSpeedStatus = (TextView) statusBar.findViewById(R.id.networkSpeedStatus);
+
         mSignalCluster = (SignalClusterView) statusBar.findViewById(R.id.signal_cluster);
         mNotificationIconArea = statusBar.findViewById(R.id.notification_icon_area_inner);
         mNotificationIcons = (IconMerger) statusBar.findViewById(R.id.notificationIcons);
@@ -127,6 +137,81 @@ public class StatusBarIconController implements Tunable {
         mLightModeIconColorSingleTone = context.getColor(R.color.light_mode_icon_color_single_tone);
         mHandler = new Handler();
         updateResources();
+
+        Thread networkSpeedUpdateThread = new Thread() {
+            String readFile(String path) throws FileNotFoundException {
+                Scanner scanner = new Scanner( new File(path) );
+                String text = scanner.useDelimiter("\\A").next();
+                scanner.close(); // Put this call in a finally block
+                return text;
+            }
+            int[] getRxBytes() {
+                try {
+                    String devs = readFile("/proc/net/dev");
+                    Pattern pattern = Pattern.compile("\\A\\s*(\\w+):\\s+(\\d )+\\z");
+                    int rx = 0, tx = 0;
+                    for (String line : devs.split("\n")) {
+                        Matcher matcher = pattern.matcher(line);
+                        if (matcher.matches()) {
+                            String interfaceName = matcher.group(1);
+                            String numbers = matcher.group(2);
+                            String[] ns = numbers.split("\\s+");
+                            rx += Integer.parseInt(ns[0]);
+                            tx += Integer.parseInt(ns[8]);
+                            Log.w("alex", interfaceName + " rx = " + ns[0] + " tx = " + tx);
+                        }
+                    }
+                    return new int[] { rx, tx };
+                } catch (FileNotFoundException e) {
+                    e.printStackTrace();
+                    return new int[] { -1, -1 };
+                }
+            }
+            long lastActionTime = 0;
+            int[] lastActionData = new int[] { 0, 0 };
+            double[] calculateSpeed() {
+                int[] bytes = getRxBytes();
+                double deltaT = System.currentTimeMillis() - lastActionTime;
+                double rxSpeed = 1.0 * (bytes[0] - lastActionData[0]) / deltaT;
+                double txSpeed = 1.0 * (bytes[1] - lastActionData[1]) / deltaT;
+                lastActionData = bytes;
+                lastActionTime = System.currentTimeMillis();
+                return new double[] { rxSpeed, txSpeed };
+            }
+            @Override
+            public void run() {
+                Log.w("alex", "SystemUI network speed updater");
+                int i = 0;
+                if (lastActionTime == 0) {
+                    lastActionTime = System.currentTimeMillis();
+                }
+
+                while (true) {
+                    try {
+                        Thread.sleep(500);
+                        final double[] speed = calculateSpeed();
+                        if (mNetworkSpeedStatus == null) {
+                            Log.e("alex", "null mNetworkSpeedStatus");
+                        }
+                        else {
+                            final int ii = i;
+                            Log.w("alex", String.valueOf(speed[0]));
+                            mNetworkSpeedStatus.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    mNetworkSpeedStatus.setText("network speed " + speed[0]);
+                                }
+                            });
+                        }
+                        i++;
+                    } catch (InterruptedException e) {
+                        Log.w("alex", "network speed update thread terminated unexpectedly");
+                        e.printStackTrace();
+                    }
+                }
+            }
+        };
+        networkSpeedUpdateThread.start();
 
         TunerService.get(mContext).addTunable(this, ICON_BLACKLIST);
     }
